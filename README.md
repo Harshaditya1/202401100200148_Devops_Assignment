@@ -1,0 +1,142 @@
+# FestPass 2026 — Docker & Container Security
+
+## Assessment status
+
+This repository is being completed in stages. The assessment PDF was not present in the workspace or the available session files at implementation time. The implementation therefore follows the requirements supplied in the conversation; PDF-specific starter code, exact wording, and any additional PDF-only details remain unverified.
+
+The actual registration number was not available in the workspace. No real registration number or derived personalized port has been invented. Set `REGNO` to the actual value and set `PORT` to `80 +` its last two digits in your local, untracked `.env`. Until then, screenshots and personalized runtime checks cannot be completed.
+
+## Project overview and architecture
+
+FestPass 2026 is a three-tier registration application:
+
+- Nginx serves the frontend and reverse-proxies `/api/` requests.
+- A Flask API reports its registration number, version, container hostname, and database health, and supports listing/creating registrations.
+- PostgreSQL stores registrations in a named volume.
+
+The intended Compose network topology isolates PostgreSQL: the frontend shares a network only with the API, while the API and database share a separate network. A frontend container therefore has no direct network membership in the database network.
+
+Docker Hub repository: <https://hub.docker.com/r/harshdocs22/fest-backend>
+
+| Personalization | Value |
+|---|---|
+| Name | Not provided |
+| REGNO | `REGNO_PLACEHOLDER` — replace locally; not a real result |
+| PORT | Not available until REGNO is known; calculate as `80 +` the last two REGNO digits |
+| Docker Hub username | `harshdocs22` |
+
+## Prerequisites
+
+- Docker Desktop with the Linux container engine and Docker Compose v2.
+- A Windows PowerShell terminal.
+- A valid REGNO and a local `.env` file for personalized runs.
+- Trivy for the actual image reports; Cosign and Docker Hub authentication for publishing/signing stages.
+
+## Stage 1 — backend containerisation
+
+The initial image intentionally uses the assessment's `python:3.9` baseline. Dependency installation precedes `app.py` copying to preserve the dependency layer cache.
+
+```powershell
+Set-Location 'C:\Desktop\Devops_CA2\202401100200148_Devops_Assignment'
+docker build -t fest-backend:0.1 .\backend
+docker image ls fest-backend
+docker image inspect fest-backend:0.1 --format '{{.Size}}'
+```
+
+Once `REGNO` and its calculated port are set, a temporary Stage 1 run and checks are:
+
+```powershell
+$env:REGNO = 'YOUR_ACTUAL_REGNO'
+$port = 80 + [int]$env:REGNO.Substring($env:REGNO.Length - 2)
+docker run -d --name backend -p "${port}:5000" -e REGNO="$env:REGNO" fest-backend:0.1
+docker ps --filter 'name=backend'
+curl.exe "http://localhost:$port/api/health"
+docker logs backend
+docker rm -f backend
+```
+
+Without a database, `database_status` should be false at this stage. Run the test only with your actual REGNO; capture the real output yourself.
+
+## Stage 2 — Compose stack
+
+Copy the safe template and replace every marked value in `.env` on your computer. Its `8080` is a syntactically valid example only, not the personalized port; replace it with `80 +` the last two actual REGNO digits. Do not commit `.env`.
+
+```powershell
+Copy-Item .env.example .env
+# Edit .env: REGNO=<actual value>, PORT=<80 + last two REGNO digits>, DB_PASSWORD=<strong local password>
+docker compose config
+docker compose up -d --build
+```
+
+The backend uses `DB_HOST=db`; its start is gated on the PostgreSQL `pg_isready` health check. PostgreSQL data persists in the named volume. The frontend is attached only to the frontend/backend network; the database is attached only to the backend/database network.
+
+API endpoints:
+
+- `GET /api/health` — registration number, application version, container hostname, database status.
+- `GET /api/registrations` — list persisted registrations.
+- `POST /api/registrations` — JSON body `{"name":"Example attendee","email":"attendee@example.test"}`.
+
+The frontend is intended to be opened at `http://localhost:<PORT>`. Test a registration using the form, then list it in the page. Restart and check persistence:
+
+```powershell
+docker compose down
+docker compose up -d
+docker volume ls
+```
+
+`docker compose down` intentionally does not remove the named database volume. Do not use `-v` for the persistence test.
+
+## Stage 3 — Trivy
+
+The assessment requires genuine scanner output. Reports and measured totals will be populated only after Trivy actually scans the built images. No scan findings, counts, exit status, or image sizes are claimed in advance.
+
+Required checks:
+
+```powershell
+trivy image fest-backend:0.1
+trivy image fest-backend:0.2
+trivy image --severity CRITICAL --ignore-unfixed --exit-code 1 fest-backend:0.2
+```
+
+The required final command must return exit code `0`; record the actual PowerShell `$LASTEXITCODE`. `reports/trivy-before.txt` and `reports/trivy-after.txt` are reserved for the unedited output of the corresponding real scans. Compare CRITICAL and HIGH counts and measured image sizes here after those scans.
+
+## Stage 4 — Docker Hub
+
+Only publish after confirming Docker Hub authentication and authorization. The repository and tags are `harshdocs22/fest-backend:1.0.0` and `harshdocs22/fest-backend:1.0`. Build/push output and the immutable pushed digest will be recorded only from actual Docker/registry output. The digest is currently **not available**.
+
+After publication, Compose will use the published `1.0.0` image, and the application will be checked against the existing database volume.
+
+## Stage 5 — Cosign
+
+Cosign is not configured in this repository yet. The required key generation, signing by the actual immutable digest, verification, and unsigned `1.0.1` rejection will be documented only after the installed Cosign syntax and real command results are available. Private keys and passwords must never be added to Git.
+
+## Evidence checklist
+
+Capture genuine, unedited screenshots yourself; no screenshots are generated by this project. Include the full terminal/browser window and the prompt/address bar details required by the assessment.
+
+- `S1-2.png` — image build, listing, and size.
+- `S1-3.png` — container status, health response, and logs.
+- `S2-2.png` — frontend-to-database isolation diagnostic.
+- `S2-3.png` — browser page with your REGNO and two registrations.
+- `S2-4.png` — registrations after restart and named volume listing.
+- `S3-1.png` — initial Trivy report and severity totals.
+- `S3-3.png` — final Trivy report and actual successful CRITICAL exit-code check.
+- `S4-1.png` — Docker Hub push output including the digest.
+- `S4-2.png` — Docker Hub Tags page showing `1.0.0` and the username.
+- `S4-3.png` — application running from the published image.
+- `S5-1.png` — safe public-key evidence.
+- `S5-2.png` — signing by digest.
+- `S5-3.png` — successful verification.
+- `S5-4.png` — rejection of unsigned `1.0.1`.
+
+## AI tools
+
+GitHub Copilot assisted with implementation and documentation. All terminal output, scans, image digests, registry actions, and cryptographic verification must come from the actual local tools and remain independently verifiable.
+
+## Incomplete steps
+
+- The PDF could not be located, so PDF-specific starter code and unquoted requirements could not be independently extracted.
+- REGNO and the derived PORT are not available; personalized execution and evidence need the actual value.
+- Trivy and Cosign are not installed as host commands at initial inspection.
+- Docker Hub login/publishing and GitHub push have not been performed; credentials/authorization are required.
+- Real Trivy report totals, pushed digests, signatures, verification output, and screenshots remain pending.

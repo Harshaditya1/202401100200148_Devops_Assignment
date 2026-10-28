@@ -1,0 +1,1 @@
+PENDING: No Trivy scan has been run yet. Replace this notice only with genuine scanner output for fest-backend:0.2.
