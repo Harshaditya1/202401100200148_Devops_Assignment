@@ -61,10 +61,11 @@
         }
       }
 
-      document.querySelector("#registration-form").addEventListener("submit", async (event) => {
+      const registrationForm = document.querySelector("#registration-form");
+      registrationForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         message.textContent = "";
-        const formData = new FormData(event.currentTarget);
+        const formData = new FormData(registrationForm);
         try {
           const response = await fetch("/api/registrations", {
             method: "POST",
@@ -76,7 +77,7 @@
           });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
-          event.currentTarget.reset();
+          registrationForm.reset();
           message.textContent = "Registration created.";
           await loadRegistrations();
         } catch (error) {
