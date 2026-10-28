@@ -125,9 +125,35 @@ The required CRITICAL check was run against `fest-backend:0.2`; actual PowerShel
 
 ## Stage 4 — Docker Hub
 
-Only publish after confirming Docker Hub authentication and authorization. The repository and tags are `harshdocs22/fest-backend:1.0.0` and `harshdocs22/fest-backend:1.0`. Build/push output and the immutable pushed digest will be recorded only from actual Docker/registry output. The digest is currently **not available**.
+The fixed backend was built locally with `APP_VERSION=1.0.0` and locally tagged as both `harshdocs22/fest-backend:1.0.0` and `harshdocs22/fest-backend:1.0`. Compose references the versioned image and no longer builds the backend. The local Compose run returned version `1.0.0`, database status `true`, and both existing registration rows. This used the local image tag; it is not evidence of a published registry image.
 
-After publication, Compose will use the published `1.0.0` image, and the application will be checked against the existing database volume.
+Local build/tag commands:
+
+```powershell
+docker build --build-arg APP_VERSION=1.0.0 -t fest-backend:1.0.0 .\backend
+docker tag fest-backend:1.0.0 harshdocs22/fest-backend:1.0.0
+docker tag fest-backend:1.0.0 harshdocs22/fest-backend:1.0
+```
+
+The public tag lookup returned HTTP 404, and the actual `docker push harshdocs22/fest-backend:1.0.0` attempt failed with `insufficient_scope: authorization failed`. No tag was published and no registry digest is available. Create/confirm the `fest-backend` repository under `harshdocs22` and authenticate with a Docker Hub credential that has write access. Do not put a password/token in a command or chat; use the interactive login locally:
+
+```powershell
+docker login --username harshdocs22
+docker push harshdocs22/fest-backend:1.0.0
+docker push harshdocs22/fest-backend:1.0
+```
+
+Record the digest from the successful `1.0.0` push output. Do not infer it from the local image ID. After successful push, pull and run the registry image and check it against the existing database volume:
+
+```powershell
+docker compose pull backend
+docker compose up -d
+docker compose ps
+Invoke-RestMethod -Uri "http://localhost:$env:PORT/api/health" | ConvertTo-Json -Compress
+Invoke-RestMethod -Uri "http://localhost:$env:PORT/api/registrations" | ConvertTo-Json -Compress
+```
+
+Do not remove local images until the registry image is confirmed available and the running application is verified to use it. The actual registry push/digest and Docker Hub browser screenshots remain pending until repository write access and manual evidence capture are available.
 
 ## Stage 5 — Cosign
 

@@ -17,14 +17,9 @@ services:
       - backend_db
 
   backend:
-    image: fest-backend:0.2
-    build:
-      context: ./backend
-      args:
-        APP_VERSION: ${APP_VERSION:-0.2.0}
+    image: harshdocs22/fest-backend:1.0.0
     environment:
       REGNO: ${REGNO:?Set REGNO in .env}
-      APP_VERSION: ${APP_VERSION:-0.2.0}
       DB_HOST: db
       DB_PORT: "5432"
       DB_NAME: festpass
