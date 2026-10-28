@@ -81,9 +81,13 @@ The frontend is intended to be opened at `http://localhost:<PORT>`. Test a regis
 ```powershell
 # Submit and list registrations through the API (PowerShell-native JSON avoids
 # Windows curl argument-quoting differences).
-$registration = @{ name = 'Attendee One'; email = 'one@example.test' } | ConvertTo-Json -Compress
-Invoke-RestMethod -Uri 'http://localhost:<PORT>/api/registrations' -Method Post -ContentType 'application/json' -Body $registration
-Invoke-RestMethod -Uri 'http://localhost:<PORT>/api/registrations' | ConvertTo-Json -Compress
+$port = [int]((Get-Content .env | Where-Object { $_ -match '^PORT=' } | Select-Object -First 1) -replace '^PORT=', '')
+$api = "http://localhost:$port/api"
+$first = @{ name = 'Attendee One'; email = 'one@example.test' } | ConvertTo-Json -Compress
+$second = @{ name = 'Attendee Two'; email = 'two@example.test' } | ConvertTo-Json -Compress
+Invoke-RestMethod -Uri "$api/registrations" -Method Post -ContentType 'application/json' -Body $first
+Invoke-RestMethod -Uri "$api/registrations" -Method Post -ContentType 'application/json' -Body $second
+Invoke-RestMethod -Uri "$api/registrations" | ConvertTo-Json -Compress
 
 # From the frontend container, this should report that db cannot be found.
 docker compose exec frontend busybox nslookup db
@@ -92,7 +96,7 @@ docker compose down
 docker compose up -d
 docker volume ls
 # Confirm the earlier registration records are still returned.
-Invoke-RestMethod -Uri 'http://localhost:<PORT>/api/registrations' | ConvertTo-Json -Compress
+Invoke-RestMethod -Uri "$api/registrations" | ConvertTo-Json -Compress
 ```
 
 `docker compose down` intentionally does not remove the named database volume. Do not use `-v` for the persistence test.
@@ -149,15 +153,56 @@ Record the digest from the successful `1.0.0` push output. Do not infer it from 
 docker compose pull backend
 docker compose up -d
 docker compose ps
-Invoke-RestMethod -Uri "http://localhost:$env:PORT/api/health" | ConvertTo-Json -Compress
-Invoke-RestMethod -Uri "http://localhost:$env:PORT/api/registrations" | ConvertTo-Json -Compress
+$port = [int]((Get-Content .env | Where-Object { $_ -match '^PORT=' } | Select-Object -First 1) -replace '^PORT=', '')
+Invoke-RestMethod -Uri "http://localhost:$port/api/health" | ConvertTo-Json -Compress
+Invoke-RestMethod -Uri "http://localhost:$port/api/registrations" | ConvertTo-Json -Compress
 ```
 
 Do not remove local images until the registry image is confirmed available and the running application is verified to use it. The actual registry push/digest and Docker Hub browser screenshots remain pending until repository write access and manual evidence capture are available.
 
 ## Stage 5 — Cosign
 
-Cosign is not configured in this repository yet. The required key generation, signing by the actual immutable digest, verification, and unsigned `1.0.1` rejection will be documented only after the installed Cosign syntax and real command results are available. Private keys and passwords must never be added to Git.
+The `1.0.1` image was built locally with `APP_VERSION=1.0.1` and was **not signed**. It has not been published because Docker Hub denied write access. Cosign is not installed, no signing key was generated, and no `cosign.pub` is present; these are intentionally not fabricated. `.gitignore` already excludes `*.key` before any key-generation step.
+
+After Docker Hub publishing access is available, check the installed Cosign syntax and generate a password-protected key pair locally. Do not send the passphrase to chat or add `cosign.key` to Git:
+
+```powershell
+cosign version
+cosign generate-key-pair --help
+cosign generate-key-pair
+git check-ignore cosign.key
+git status --short
+```
+
+`cosign generate-key-pair` prompts for the private-key password and writes `cosign.key` and `cosign.pub`. Confirm that Git ignores `cosign.key`; stage/commit only the public key:
+
+```powershell
+git add cosign.pub
+git diff --cached --name-only
+git commit -m "Add Cosign public verification key"
+```
+
+After `1.0.0` has actually been pushed and its immutable digest recorded, inspect `cosign sign --help` / `cosign verify --help`, then sign and verify that digest. Replace the marked string only with the digest from the successful registry push:
+
+```powershell
+$digest = 'sha256:<DIGEST_FROM_SUCCESSFUL_1.0.0_PUSH>'
+cosign sign --key .\cosign.key "harshdocs22/fest-backend@$digest"
+cosign verify --key .\cosign.pub "harshdocs22/fest-backend@$digest"
+```
+
+Build and publish `1.0.1` without running `cosign sign`, then confirm verification rejects it:
+
+```powershell
+docker build --build-arg APP_VERSION=1.0.1 -t fest-backend:1.0.1 .\backend
+docker tag fest-backend:1.0.1 harshdocs22/fest-backend:1.0.1
+docker push harshdocs22/fest-backend:1.0.1
+cosign verify --key .\cosign.pub harshdocs22/fest-backend:1.0.1
+$verifyExitCode = $LASTEXITCODE
+if ($verifyExitCode -eq 0) { throw 'Unexpectedly verified an unsigned image.' }
+Write-Output "Verification rejection exit code: $verifyExitCode"
+```
+
+No signing, verification, or unsigned-image rejection result is claimed until these commands are run and their actual output confirms it.
 
 ## Evidence checklist
 
@@ -187,5 +232,8 @@ GitHub Copilot assisted with implementation and documentation. All terminal outp
 - The PDF could not be located, so PDF-specific starter code and unquoted requirements could not be independently extracted.
 - REGNO and the derived PORT are not available; personalized execution and evidence need the actual value.
 - Trivy and Cosign were not installed as host commands at initial inspection; the actual Trivy scan/check used the official pinned Trivy container.
-- Docker Hub login/publishing and GitHub push have not been performed; credentials/authorization are required.
-- Real Trivy report totals, pushed digests, signatures, verification output, and screenshots remain pending.
+- Docker Hub tag lookup returned 404 and the `1.0.0` push attempt returned `insufficient_scope: authorization failed`; no image was published and no registry digest is available. The Docker Hub repository/write authorization must be corrected.
+- GitHub push has not been performed; the repository contains unfinished external publishing/signing stages and must not be presented as complete.
+- REGNO is still a placeholder, so personalized port/runtime evidence is pending.
+- Cosign key generation, public-key commit, signing, verification, and unsigned `1.0.1` rejection remain pending.
+- Required screenshots are manual evidence; none have been fabricated or captured.
