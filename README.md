@@ -79,12 +79,25 @@ API endpoints:
 The frontend is intended to be opened at `http://localhost:<PORT>`. Test a registration using the form, then list it in the page. Restart and check persistence:
 
 ```powershell
+# Submit and list registrations through the API (PowerShell-native JSON avoids
+# Windows curl argument-quoting differences).
+$registration = @{ name = 'Attendee One'; email = 'one@example.test' } | ConvertTo-Json -Compress
+Invoke-RestMethod -Uri 'http://localhost:<PORT>/api/registrations' -Method Post -ContentType 'application/json' -Body $registration
+Invoke-RestMethod -Uri 'http://localhost:<PORT>/api/registrations' | ConvertTo-Json -Compress
+
+# From the frontend container, this should report that db cannot be found.
+docker compose exec frontend busybox nslookup db
+
 docker compose down
 docker compose up -d
 docker volume ls
+# Confirm the earlier registration records are still returned.
+Invoke-RestMethod -Uri 'http://localhost:<PORT>/api/registrations' | ConvertTo-Json -Compress
 ```
 
 `docker compose down` intentionally does not remove the named database volume. Do not use `-v` for the persistence test.
+
+Local Stage 2 checks ran with the clearly marked `REGNO_PLACEHOLDER` and example port `8080`: two API registrations were listed again after `docker compose down` / `up -d`; the PostgreSQL named volume remained; the frontend and database had disjoint Docker networks; and `busybox nslookup db` from the frontend returned `Can't find db: No answer`. These are local functional checks, not personalized screenshots or real attendee data.
 
 ## Stage 3 — Trivy
 
