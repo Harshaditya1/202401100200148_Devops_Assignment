@@ -101,17 +101,27 @@ Local Stage 2 checks ran with the clearly marked `REGNO_PLACEHOLDER` and example
 
 ## Stage 3 — Trivy
 
-The assessment requires genuine scanner output. Reports and measured totals will be populated only after Trivy actually scans the built images. No scan findings, counts, exit status, or image sizes are claimed in advance.
+The initial image was actually scanned using Trivy 0.76.1. The unedited table output is saved in `reports/trivy-before.txt`; its structured JSON was used to count findings with a fix version separately from those without one. The initial local image size was measured with `docker image inspect`.
+
+| Image | CRITICAL fixed | CRITICAL unfixed | HIGH fixed | HIGH unfixed | Image size |
+|---|---:|---:|---:|---:|---:|
+| `fest-backend:0.1` (Python 3.9 baseline) | 217 | 17 | 1,802 | 447 | 412,524,427 bytes (413 MB) |
+| `fest-backend:0.2` (maintained runtime) | 0 | 0 | 5 | 44 | 50,039,972 bytes (50 MB) |
+
+“Fix version available” means Trivy reports a version that addresses the finding; it does not mean that affected software in the scanned image is already fixed. “No known fix” means the Trivy result has no `FixedVersion`. Counts are findings, not unique CVE identifiers. The baseline totals are CRITICAL 234 and HIGH 2,249; after the upgrade they are CRITICAL 0 and HIGH 49. The `0.2` image uses the patch-pinned `python:3.13.18-slim-trixie`, pinned current Flask/Werkzeug/psycopg2-binary/Gunicorn packages, a non-root UID, read-only root filesystem in Compose, dropped Linux capabilities, and `no-new-privileges`.
 
 Required checks:
 
 ```powershell
-trivy image fest-backend:0.1
-trivy image fest-backend:0.2
-trivy image --severity CRITICAL --ignore-unfixed --exit-code 1 fest-backend:0.2
+$reports = (Get-Location).Path + '\reports'
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${reports}:/reports" -v fest_trivy_cache:/cache aquasec/trivy:0.76.1 --cache-dir /cache image --scanners vuln --format table --output /reports/trivy-before.txt fest-backend:0.1
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${reports}:/reports" -v fest_trivy_cache:/cache aquasec/trivy:0.76.1 --cache-dir /cache image --scanners vuln --format table --output /reports/trivy-after.txt fest-backend:0.2
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${reports}:/reports" -v fest_trivy_cache:/cache aquasec/trivy:0.76.1 --cache-dir /cache image --scanners vuln --severity CRITICAL --ignore-unfixed --exit-code 1 fest-backend:0.2
+$trivyExitCode = $LASTEXITCODE
+"Actual required-check exit code: $trivyExitCode"
 ```
 
-The required final command must return exit code `0`; record the actual PowerShell `$LASTEXITCODE`. `reports/trivy-before.txt` and `reports/trivy-after.txt` are reserved for the unedited output of the corresponding real scans. Compare CRITICAL and HIGH counts and measured image sizes here after those scans.
+The required CRITICAL check was run against `fest-backend:0.2`; actual PowerShell exit code: **0**. Both reports contain the genuine Trivy 0.76.1 table output. The scan was performed using the official Trivy container because a host Trivy executable was not installed.
 
 ## Stage 4 — Docker Hub
 
@@ -150,6 +160,6 @@ GitHub Copilot assisted with implementation and documentation. All terminal outp
 
 - The PDF could not be located, so PDF-specific starter code and unquoted requirements could not be independently extracted.
 - REGNO and the derived PORT are not available; personalized execution and evidence need the actual value.
-- Trivy and Cosign are not installed as host commands at initial inspection.
+- Trivy and Cosign were not installed as host commands at initial inspection; the actual Trivy scan/check used the official pinned Trivy container.
 - Docker Hub login/publishing and GitHub push have not been performed; credentials/authorization are required.
 - Real Trivy report totals, pushed digests, signatures, verification output, and screenshots remain pending.
